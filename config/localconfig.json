@@ -1,0 +1,34 @@
+{
+  "game": {
+    "name": "FreeFire",
+    "version": "1.0.0",
+    "serverUrl": "http://localhost:3000",
+    "redirectUri": "com.dts.freefireth:/auth/callback"
+  },
+  "auth": {
+    "methods": {
+      "discord": true,
+      "facebook": true,
+      "google": true,
+      "normal": true
+    },
+    "requireDiscordJoin": true,
+    "discordServerId": "k6R6CKw7Q",
+    "autoRedirect": true,
+    "redirectDelay": 2000
+  },
+  "gameFiles": {
+    "path": "com.dts.freefireth/files/",
+    "configFile": "game_config.json",
+    "userDataFile": "user_data.json"
+  },
+  "modScripts": {
+    "enabled": true,
+    "autoMod": true,
+    "modConditions": {
+      "minPlayTime": 3600,
+      "minLevel": 10,
+      "requiredWins": 5
+    }
+  }
+}
