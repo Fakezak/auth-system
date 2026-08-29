@@ -1,9 +1,11 @@
 const express = require('express');
 const passport = require('passport');
 const router = express.Router();
+// Fix: Use correct relative path
 const { isAuthenticated, generateToken } = require('../middleware/auth');
-const { verifyDiscordJoin, getGameConfig } = require('../controllers/authController');
+const { verifyDiscordJoin, getGameConfig, createGameFiles, generateGameId } = require('../controllers/authController');
 const User = require('../models/User');
+const config = require('../config/localconfig.json');
 
 // ============ AUTH ROUTES ============
 
@@ -32,7 +34,6 @@ router.get('/discord/callback',
     failureMessage: true
   }),
   (req, res) => {
-    // Check if user needs to join Discord
     if (req.authInfo && req.authInfo.requiresDiscord) {
       return res.redirect(`/auth/require-discord?userId=${req.user._id}`);
     }
@@ -93,7 +94,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
     
-    // Check if user needs to join Discord
     if (config.auth.requireDiscordJoin && !user.joinedDiscord) {
       return res.status(403).json({
         error: 'Discord required',
@@ -107,8 +107,6 @@ router.post('/login', async (req, res) => {
     await user.save();
     
     const token = generateToken(user);
-    
-    // Return game config
     const gameConfig = await getGameConfig(user._id);
     
     res.json({
@@ -153,13 +151,11 @@ router.post('/register', async (req, res) => {
     });
     
     await user.save();
-    
-    // Create game files
     await createGameFiles(user);
     
     res.status(201).json({
       success: true,
-      message: 'User created. Please check your email for verification.',
+      message: 'User created successfully',
       userId: user._id
     });
   } catch (error) {
@@ -176,119 +172,168 @@ router.get('/require-discord', (req, res) => {
     <head>
       <title>Join Discord</title>
       <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-          font-family: Arial, sans-serif;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
           display: flex;
           justify-content: center;
           align-items: center;
-          height: 100vh;
-          margin: 0;
+          min-height: 100vh;
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          padding: 20px;
         }
         .container {
           background: white;
-          padding: 40px;
-          border-radius: 10px;
+          padding: 50px 40px;
+          border-radius: 20px;
           text-align: center;
-          max-width: 400px;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+          max-width: 450px;
+          width: 100%;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+          animation: slideUp 0.6s ease-out;
         }
-        h1 { color: #333; }
-        p { color: #666; margin: 20px 0; }
+        @keyframes slideUp {
+          from { transform: translateY(30px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
+        }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+        h1 { color: #2d3748; font-size: 28px; margin-bottom: 10px; }
+        p { color: #718096; font-size: 16px; line-height: 1.6; margin: 15px 0; }
         .discord-btn {
-          background: #7289da;
+          background: #5865F2;
           color: white;
           border: none;
-          padding: 15px 40px;
+          padding: 16px 40px;
           font-size: 18px;
-          border-radius: 5px;
+          font-weight: 600;
+          border-radius: 12px;
           cursor: pointer;
-          margin: 10px 0;
-          transition: transform 0.3s;
+          margin: 15px 0 10px;
+          transition: all 0.3s;
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
         }
         .discord-btn:hover {
-          transform: scale(1.05);
+          transform: scale(1.02);
+          background: #4752C4;
+          box-shadow: 0 8px 25px rgba(88, 101, 242, 0.4);
         }
+        .discord-btn:active { transform: scale(0.98); }
         .back-btn {
-          background: #333;
-          color: white;
+          background: #e2e8f0;
+          color: #2d3748;
           border: none;
-          padding: 10px 30px;
-          font-size: 14px;
-          border-radius: 5px;
+          padding: 12px 30px;
+          font-size: 15px;
+          border-radius: 12px;
           cursor: pointer;
+          transition: all 0.3s;
           margin-top: 10px;
+          width: 100%;
         }
-        .back-btn:hover {
-          background: #555;
-        }
+        .back-btn:hover { background: #cbd5e0; }
         .loading {
           display: none;
           margin: 20px 0;
         }
         .spinner {
           border: 4px solid #f3f3f3;
-          border-top: 4px solid #7289da;
+          border-top: 4px solid #5865F2;
           border-radius: 50%;
-          width: 40px;
-          height: 40px;
+          width: 50px;
+          height: 50px;
           animation: spin 1s linear infinite;
-          margin: 0 auto;
+          margin: 0 auto 15px;
         }
         @keyframes spin {
           0% { transform: rotate(0deg); }
           100% { transform: rotate(360deg); }
         }
+        .status { 
+          font-size: 14px; 
+          color: #48bb78; 
+          margin-top: 10px;
+          display: none;
+        }
+        .server-id {
+          background: #f7fafc;
+          padding: 10px;
+          border-radius: 8px;
+          font-size: 13px;
+          color: #4a5568;
+          margin-top: 15px;
+        }
+        .server-id code {
+          background: #e2e8f0;
+          padding: 2px 10px;
+          border-radius: 4px;
+          font-weight: 600;
+          color: #2d3748;
+        }
       </style>
     </head>
     <body>
       <div class="container">
-        <h1>🎮 Join Our Discord</h1>
-        <p>To continue playing FreeFire, you must join our Discord community!</p>
-        <p style="font-size: 14px; color: #999;">
-          This helps us verify real players and prevent bots.
-        </p>
+        <div class="icon">🎮</div>
+        <h1>Join Our Discord</h1>
+        <p>To continue playing FreeFire, you must join our community!<br>This helps us verify real players.</p>
+        
         <button class="discord-btn" onclick="joinDiscord()">
-          🎮 Join Discord Server
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          Join Discord Server
         </button>
+        
         <div class="loading" id="loading">
           <div class="spinner"></div>
-          <p style="margin-top: 15px;">Verifying Discord membership...</p>
+          <p style="color: #4a5568;">Verifying Discord membership...</p>
+          <div class="status" id="status">✅ Verified! Redirecting...</div>
         </div>
-        <br>
+        
         <button class="back-btn" onclick="backToGame()">
-          Return to Game
+          ← Return to Game
         </button>
-        <p style="font-size: 12px; color: #999; margin-top: 20px;">
-          Discord Server: k6R6CKw7Q
-        </p>
+        
+        <div class="server-id">
+          Discord Server: <code>k6R6CKw7Q</code>
+        </div>
       </div>
 
       <script>
-        const userId = "${userId}";
+        const userId = "${userId || ''}";
         let verificationInterval;
+        let attempts = 0;
+        const maxAttempts = 10;
         
         async function joinDiscord() {
-          // Open Discord in new window
           const discordWindow = window.open('https://discord.gg/k6R6CKw7Q', '_blank');
           
-          // Show loading
           document.getElementById('loading').style.display = 'block';
+          document.querySelector('.discord-btn').disabled = true;
+          document.querySelector('.discord-btn').style.opacity = '0.6';
           
           // Start verification
           verificationInterval = setInterval(checkVerification, 3000);
           
-          // Auto redirect after 5 seconds if not verified
+          // Auto redirect after 30 seconds if not verified
           setTimeout(() => {
-            // If not verified, user can manually verify
             if (!window.verified) {
               document.getElementById('loading').style.display = 'none';
-              alert('Please join the Discord server and then click "Return to Game"');
+              document.querySelector('.discord-btn').disabled = false;
+              document.querySelector('.discord-btn').style.opacity = '1';
+              alert('Please join the Discord server and click "Return to Game"');
             }
-          }, 5000);
+          }, 30000);
         }
         
         async function checkVerification() {
+          if (!userId) return;
+          
+          attempts++;
           try {
             const response = await fetch('/auth/verify-discord', {
               method: 'POST',
@@ -301,30 +346,44 @@ router.get('/require-discord', (req, res) => {
             if (data.success) {
               window.verified = true;
               clearInterval(verificationInterval);
+              document.getElementById('loading').style.display = 'block';
+              document.getElementById('status').style.display = 'block';
+              document.querySelector('.spinner').style.display = 'none';
+              
+              setTimeout(() => {
+                backToGame();
+              }, 2000);
+            } else if (attempts >= maxAttempts) {
+              clearInterval(verificationInterval);
               document.getElementById('loading').style.display = 'none';
-              alert('✅ Discord verification successful! Redirecting to game...');
-              backToGame();
+              document.querySelector('.discord-btn').disabled = false;
+              document.querySelector('.discord-btn').style.opacity = '1';
             }
           } catch (error) {
             console.error('Verification error:', error);
+            if (attempts >= maxAttempts) {
+              clearInterval(verificationInterval);
+              document.getElementById('loading').style.display = 'none';
+            }
           }
         }
         
         function backToGame() {
-          // Auto redirect back to game
+          // Try to redirect back to game
           window.location.href = 'com.dts.freefireth://auth/success';
           
-          // If that doesn't work, try fallback
+          // Fallback
           setTimeout(() => {
             window.location.href = '/auth/success';
           }, 1000);
         }
         
         // Auto-check on page load
-        window.addEventListener('load', () => {
-          // Check if user already verified
-          checkVerification();
-        });
+        if (userId) {
+          window.addEventListener('load', () => {
+            setTimeout(checkVerification, 2000);
+          });
+        }
       </script>
     </body>
     </html>
